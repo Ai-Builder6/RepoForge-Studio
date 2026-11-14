@@ -1,11 +1,40 @@
 import React, { useState } from 'react';
-import { Check, Download, Image as ImageIcon, Sparkles, X } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  Download,
+  Github,
+  Image as ImageIcon,
+  Loader2,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import brandEmblemUrl from '../assets/images/repoforge_brand_emblem_1794613955556.jpg';
+import type { GitHubAuthStatus } from '../types';
+import { apiFetch } from '../utils/api';
 
 interface BrandLogoModalProps {
   isOpen: boolean;
   onClose: () => void;
+  githubAuth?: GitHubAuthStatus | null;
+  onConnectGitHub?: () => void;
 }
+
+export const REPOFORGE_SHORT_DESCRIPTION =
+  'Clone, inspect, compile, and launch any public or private GitHub repository in seconds—complete with live previews, branch diffs, automated README & CI workflows, and Google Drive export.';
+
+export const REPOFORGE_FULL_DESCRIPTION =
+  'RepoForge Studio is an interactive GitHub repository workspace, compiler, and live sandbox launcher. Paste any public or private GitHub repository URL to shallow-clone and index its source tree, edit files and environment variables, run full production builds and backend API subprocesses, compare branches side-by-side, synthesize tailored README.md documentation and GitHub Actions CI/CD workflows, sync snapshots to Cloud Firestore, and export the complete project folder directly to Google Drive.';
+
+export const REPOFORGE_TOPICS = [
+  'repoforge-studio',
+  'github-importer',
+  'sandbox-builder',
+  'branch-diff',
+  'github-actions',
+  'google-drive',
+  'developer-tools',
+];
 
 const VECTOR_EMBLEM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64" fill="none">
   <rect width="64" height="64" rx="14" fill="#FFFFFF"/>
@@ -54,10 +83,23 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-export const BrandLogoModal: React.FC<BrandLogoModalProps> = ({ isOpen, onClose }) => {
+export const BrandLogoModal: React.FC<BrandLogoModalProps> = ({
+  isOpen,
+  onClose,
+  githubAuth,
+  onConnectGitHub,
+}) => {
   const [downloadedKey, setDownloadedKey] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [renderingPng, setRenderingPng] = useState(false);
   const [previewImgFailed, setPreviewImgFailed] = useState(false);
+
+  // Direct GitHub Repo Description Sync State
+  const [targetGithubRepo, setTargetGithubRepo] = useState('');
+  const [customGithubDesc, setCustomGithubDesc] = useState(REPOFORGE_SHORT_DESCRIPTION);
+  const [pushingToGitHub, setPushingToGitHub] = useState(false);
+  const [githubSyncNotice, setGithubSyncNotice] = useState<string | null>(null);
+  const [githubSyncError, setGithubSyncError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -66,6 +108,74 @@ export const BrandLogoModal: React.FC<BrandLogoModalProps> = ({ isOpen, onClose 
     setTimeout(() => {
       setDownloadedKey((prev) => (prev === key ? null : prev));
     }, 2200);
+  };
+
+  const handleCopyText = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(key);
+      setTimeout(() => {
+        setCopiedField((prev) => (prev === key ? null : prev));
+      }, 2000);
+    } catch {
+      // Ignore clipboard restriction
+    }
+  };
+
+  const handlePushDescriptionToGitHub = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGithubSyncNotice(null);
+    setGithubSyncError(null);
+
+    if (!githubAuth?.connected) {
+      if (onConnectGitHub) {
+        onConnectGitHub();
+      } else {
+        setGithubSyncError('Connect your GitHub account first to push repository metadata.');
+      }
+      return;
+    }
+
+    const cleaned = targetGithubRepo
+      .trim()
+      .replace(/^https?:\/\/github\.com\//i, '')
+      .replace(/\.git$/i, '')
+      .replace(/^\/+|\/+$/g, '');
+    const parts = cleaned.split('/').filter(Boolean);
+    if (parts.length < 2) {
+      setGithubSyncError('Enter a valid GitHub repository in owner/repo format.');
+      return;
+    }
+
+    setPushingToGitHub(true);
+    try {
+      const res = await apiFetch(`/api/github/repos/${parts[0]}/${parts[1]}/metadata`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: customGithubDesc.trim(),
+          homepage: window.location.origin,
+          topics: REPOFORGE_TOPICS,
+        }),
+      });
+      const payload = (await res.json()) as {
+        ok?: boolean;
+        full_name?: string;
+        error?: string;
+      };
+      if (!res.ok || !payload.ok) {
+        throw new Error(payload.error || 'Failed to update GitHub repository description.');
+      }
+      setGithubSyncNotice(
+        `Updated description, homepage URL, and topics on github.com/${payload.full_name}.`
+      );
+    } catch (err) {
+      setGithubSyncError(
+        err instanceof Error ? err.message : 'Unable to push description to GitHub.'
+      );
+    } finally {
+      setPushingToGitHub(false);
+    }
   };
 
   const handleDownloadSvg = (svgContent: string, filename: string, key: string) => {
@@ -101,7 +211,9 @@ export const BrandLogoModal: React.FC<BrandLogoModalProps> = ({ isOpen, onClose 
       try {
         await drawFromUrl(brandEmblemUrl);
       } catch {
-        const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(VECTOR_EMBLEM_SVG)}`;
+        const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+          VECTOR_EMBLEM_SVG
+        )}`;
         await drawFromUrl(svgDataUrl);
       }
 
@@ -141,30 +253,172 @@ export const BrandLogoModal: React.FC<BrandLogoModalProps> = ({ isOpen, onClose 
       aria-modal="true"
       aria-labelledby="brand-logo-modal-title"
     >
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-2xl overflow-hidden">
+      <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-2.5">
             <Sparkles className="w-4 h-4 text-orange-500" />
             <h2
               id="brand-logo-modal-title"
               className="text-base font-bold text-slate-900 dark:text-white"
             >
-              Download RepoForge Studio Brand Logo &amp; Icon Kit
+              RepoForge Studio — App Description, GitHub Sync &amp; Brand Logo Kit
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close logo download modal"
+            aria-label="Close modal"
             className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Visual Previews on Light & Dark Surfaces */}
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto">
+          {/* Section 1: Ready-to-Copy App Descriptions & One-Click GitHub Sync */}
+          <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-5 bg-slate-50/70 dark:bg-[#0B0F17] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  RepoForge Studio App Descriptions &amp; GitHub &ldquo;About&rdquo; Sync
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  Copy either description for your repository, app store listing, or social card—or push it directly to GitHub.
+                </p>
+              </div>
+            </div>
+
+            {/* Short GitHub About Description */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  Short GitHub Repository &ldquo;About&rdquo; Description ({customGithubDesc.length}/350 chars)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyText(customGithubDesc, 'short-desc')}
+                  className="h-7 px-2.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  {copiedField === 'short-desc' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Short Description</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <textarea
+                rows={2}
+                maxLength={350}
+                value={customGithubDesc}
+                onChange={(e) => setCustomGithubDesc(e.target.value)}
+                className="w-full p-3 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 leading-relaxed focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            {/* Full App Overview Description */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  Full Application Description (README &amp; Project Listing)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyText(REPOFORGE_FULL_DESCRIPTION, 'full-desc')}
+                  className="h-7 px-2.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  {copiedField === 'full-desc' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Full Description</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="p-3 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                {REPOFORGE_FULL_DESCRIPTION}
+              </div>
+            </div>
+
+            {/* Topics Line */}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1">
+              <div className="text-slate-600 dark:text-slate-400">
+                <span className="font-semibold text-slate-800 dark:text-slate-200 mr-2">
+                  Suggested GitHub Topics:
+                </span>
+                <span className="font-mono text-cyan-700 dark:text-cyan-400">
+                  {REPOFORGE_TOPICS.join(' · ')}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleCopyText(REPOFORGE_TOPICS.join(', '), 'topics')}
+                className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline inline-flex items-center gap-1 cursor-pointer shrink-0"
+              >
+                {copiedField === 'topics' ? 'Copied topics' : 'Copy topics'}
+              </button>
+            </div>
+
+            {/* Direct Push to GitHub Form */}
+            <form
+              onSubmit={(e) => void handlePushDescriptionToGitHub(e)}
+              className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
+            >
+              <input
+                type="text"
+                value={targetGithubRepo}
+                onChange={(e) => setTargetGithubRepo(e.target.value)}
+                placeholder={
+                  githubAuth?.user?.login
+                    ? `${githubAuth.user.login}/repoforge-studio`
+                    : 'owner/repoforge-studio (or paste GitHub repo URL)'
+                }
+                className="flex-1 h-9 px-3 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-orange-500"
+              />
+              <button
+                type="submit"
+                disabled={pushingToGitHub}
+                className="h-9 px-4 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                {pushingToGitHub ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Github className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {githubAuth?.connected
+                    ? 'Add Description to GitHub Repo'
+                    : 'Connect GitHub to Push Description'}
+                </span>
+              </button>
+            </form>
+
+            {githubSyncNotice && (
+              <div className="p-2.5 rounded-lg border border-emerald-300 dark:border-emerald-700/50 bg-emerald-50 dark:bg-emerald-950/30 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 shrink-0" />
+                <span>{githubSyncNotice}</span>
+              </div>
+            )}
+
+            {githubSyncError && (
+              <div className="p-2.5 rounded-lg border border-rose-300 dark:border-rose-700/50 bg-rose-50 dark:bg-rose-950/30 text-xs text-rose-800 dark:text-rose-300">
+                {githubSyncError}
+              </div>
+            )}
+          </div>
+
+          {/* Section 2: Visual Previews on Light & Dark Surfaces */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded-xl border border-slate-200 bg-[#F8FAFC] p-5 flex items-center gap-4">
               <div className="w-14 h-14 rounded-xl overflow-hidden border border-orange-200 bg-white shrink-0 flex items-center justify-center shadow-2xs">
@@ -184,7 +438,7 @@ export const BrandLogoModal: React.FC<BrandLogoModalProps> = ({ isOpen, onClose 
                 <div className="text-base font-extrabold tracking-tight text-slate-900">
                   RepoForge <span className="text-orange-600">Studio</span>
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">Bright Surface Lockup</div>
+                <div className="text-xs text-slate-500 mt-0.5">Light Mode Lockup</div>
               </div>
             </div>
 
@@ -206,12 +460,12 @@ export const BrandLogoModal: React.FC<BrandLogoModalProps> = ({ isOpen, onClose 
                 <div className="text-base font-extrabold tracking-tight text-white">
                   RepoForge <span className="text-orange-400">Studio</span>
                 </div>
-                <div className="text-xs text-slate-400 mt-0.5">Dark Surface Lockup</div>
+                <div className="text-xs text-slate-400 mt-0.5">Dark Mode Lockup</div>
               </div>
             </div>
           </div>
 
-          {/* Download Options List */}
+          {/* Section 3: Download Options List */}
           <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
             <div className="px-4 py-3.5 flex items-center justify-between gap-4 bg-white dark:bg-[#111827]">
               <div>
@@ -275,7 +529,7 @@ export const BrandLogoModal: React.FC<BrandLogoModalProps> = ({ isOpen, onClose 
             <div className="px-4 py-3.5 flex items-center justify-between gap-4 bg-white dark:bg-[#111827]">
               <div>
                 <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                  Full Wordmark Lockups — Bright &amp; Dark (.SVG)
+                  Full Wordmark Lockups — Light &amp; Dark (.SVG)
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Horizontal emblem + RepoForge Studio wordmark banners
@@ -298,7 +552,7 @@ export const BrandLogoModal: React.FC<BrandLogoModalProps> = ({ isOpen, onClose 
                   ) : (
                     <Download className="w-3.5 h-3.5 text-orange-500" />
                   )}
-                  <span>Bright .SVG</span>
+                  <span>Light .SVG</span>
                 </button>
                 <button
                   type="button"

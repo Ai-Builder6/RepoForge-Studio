@@ -2355,6 +2355,123 @@ async function startServer() {
     }
   });
 
+  // Update GitHub repository "About" description, homepage URL, and topics via connected GitHub OAuth session
+  app.patch('/api/github/repos/:owner/:repo/metadata', async (req: Request, res: Response) => {
+    const session = getGitHubSession(req);
+    if (!session) {
+      res.status(401).json({
+        error: 'Connect your GitHub account first (click Private Repos) to update repository descriptions on GitHub.',
+      });
+      return;
+    }
+
+    const owner = String(req.params.owner || '').trim();
+    const repo = String(req.params.repo || '').trim().replace(/\.git$/, '');
+    if (!owner || !repo) {
+      res.status(400).json({ error: 'Both repository owner and name are required.' });
+      return;
+    }
+
+    const { description, homepage, topics } = (req.body || {}) as {
+      description?: string;
+      homepage?: string;
+      topics?: string[];
+    };
+
+    if (typeof description !== 'string') {
+      res.status(400).json({ error: 'A description string is required.' });
+      return;
+    }
+
+    // GitHub enforces <= 350 characters without control characters on repo descriptions
+    const cleanDescription = description.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 350);
+    const patchBody: Record<string, unknown> = {
+      description: cleanDescription,
+    };
+    if (typeof homepage === 'string') {
+      patchBody.homepage = homepage.trim().slice(0, 255);
+    }
+
+    try {
+      const ghPatchRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'RepoForge-Studio',
+        },
+        body: JSON.stringify(patchBody),
+      });
+
+      if (!ghPatchRes.ok) {
+        const errPayload = (await ghPatchRes.json().catch(() => ({}))) as { message?: string };
+        res.status(ghPatchRes.status).json({
+          error:
+            errPayload.message ||
+            `GitHub returned HTTP ${ghPatchRes.status}. Ensure your GitHub account has admin/write access to ${owner}/${repo}.`,
+        });
+        return;
+      }
+
+      const updatedRepo = (await ghPatchRes.json()) as {
+        full_name: string;
+        description: string | null;
+        homepage: string | null;
+        html_url: string;
+      };
+
+      let appliedTopics: string[] | undefined;
+      if (Array.isArray(topics) && topics.length > 0) {
+        const cleanTopics = Array.from(
+          new Set(
+            topics
+              .map((t) =>
+                String(t)
+                  .toLowerCase()
+                  .replace(/[^a-z0-9-]/g, '-')
+                  .replace(/-+/g, '-')
+                  .replace(/^-|-$/g, '')
+                  .slice(0, 50)
+              )
+              .filter(Boolean)
+          )
+        ).slice(0, 15);
+
+        if (cleanTopics.length > 0) {
+          const topicRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/topics`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${session.token}`,
+              Accept: 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'User-Agent': 'RepoForge-Studio',
+            },
+            body: JSON.stringify({ names: cleanTopics }),
+          });
+          if (topicRes.ok) {
+            const topicData = (await topicRes.json()) as { names?: string[] };
+            appliedTopics = topicData.names;
+          }
+        }
+      }
+
+      res.json({
+        updated: {
+          full_name: updatedRepo.full_name,
+          description: updatedRepo.description,
+          homepage: updatedRepo.homepage,
+          html_url: updatedRepo.html_url,
+          topics: appliedTopics,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to update GitHub repository metadata.',
+      });
+    }
+  });
+
   // List branches & PRs for any repository (uses OAuth token if connected, or git ls-remote fallback for public repos!)
   app.get('/api/github/repos/:owner/:repo/refs', async (req: Request, res: Response) => {
     const owner = String(req.params.owner);
@@ -3337,11 +3454,40 @@ async function startServer() {
       existsOnDisk: fs.existsSync(path.join(ws.repoDir, f.path)),
     }));
 
+    const topLangs = ws.languages.slice(0, 2).map((l) => l.language).join(' & ');
+    const rawDesc = `${ws.repoName}: ${ws.framework} application${
+      topLangs ? ` built with ${topLangs}` : ''
+    }${
+      ws.apiServer.capable ? ', full-stack API server,' : ''
+    }${
+      ws.databaseSchema.detected ? ` and ${ws.databaseSchema.ormType} data models` : ''
+    } — inspected, verified, and CI/CD-enabled via RepoForge Studio.`;
+    const suggestedGithubDescription = rawDesc.replace(/\s+/g, ' ').trim().slice(0, 340);
+
+    const suggestedGithubTopics = Array.from(
+      new Set(
+        [
+          ws.framework.toLowerCase().includes('react') ? 'react' : '',
+          ws.framework.toLowerCase().includes('vite') ? 'vite' : '',
+          ws.framework.toLowerCase().includes('next') ? 'nextjs' : '',
+          ws.framework.toLowerCase().includes('svelte') ? 'svelte' : '',
+          ws.framework.toLowerCase().includes('vue') ? 'vuejs' : '',
+          ws.languages.some((l) => l.language === 'TypeScript') ? 'typescript' : '',
+          ws.languages.some((l) => l.language === 'JavaScript') ? 'javascript' : '',
+          ws.apiServer.capable ? 'nodejs-api' : 'web-app',
+          'github-actions',
+          'repoforge',
+        ].filter(Boolean)
+      )
+    ).slice(0, 8);
+
     return {
       workspaceId: ws.id,
       repoFullName: `${ws.owner}/${ws.repoName}`,
       branch: primaryBranch,
       generatedAt: new Date().toISOString(),
+      suggestedGithubDescription,
+      suggestedGithubTopics,
       files,
     };
   }

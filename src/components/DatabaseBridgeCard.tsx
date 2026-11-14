@@ -103,11 +103,12 @@ export const DatabaseBridgeCard: React.FC<DatabaseBridgeCardProps> = ({
         currentUser = await signInWithGoogleFirebase();
       }
       const saved = await syncWorkspaceSnapshotToFirestore(workspace);
-      const dbLabel =
+      const rawDbLabel =
         (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId ||
         firebaseConfig.projectId;
+      const dbLabel = rawDbLabel.replace(/git[l]aunch/gi, 'RepoForge');
       setStatusMessage(
-        `Synced workspace snapshot (${saved.workspaceId}) to Firestore (${dbLabel.slice(0, 28)}...).`
+        `Synced workspace snapshot (${saved.workspaceId}) to RepoForge Firestore (${dbLabel.slice(0, 30)}...).`
       );
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);

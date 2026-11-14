@@ -6,6 +6,7 @@ import {
   Lock,
   Loader2,
   LogOut,
+  Save,
   Search,
   Unlock,
   X,
@@ -17,6 +18,7 @@ import type {
   GitHubRepoItem,
 } from '../types';
 import { apiFetch } from '../utils/api';
+import { REPOFORGE_SHORT_DESCRIPTION } from './BrandLogoModal';
 
 interface GitHubRepoDrawerProps {
   authStatus: GitHubAuthStatus | null;
@@ -45,6 +47,12 @@ export const GitHubRepoDrawer: React.FC<GitHubRepoDrawerProps> = ({
   const [chosenBranch, setChosenBranch] = useState('');
   const [copiedCallback, setCopiedCallback] = useState(false);
 
+  // Direct GitHub Repo Description Editor State
+  const [repoDescriptionDraft, setRepoDescriptionDraft] = useState('');
+  const [savingDesc, setSavingDesc] = useState(false);
+  const [descSavedMsg, setDescSavedMsg] = useState<string | null>(null);
+  const [descErrorMsg, setDescErrorMsg] = useState<string | null>(null);
+
   useEffect(() => {
     if (!authStatus?.connected) return;
     setLoadingRepos(true);
@@ -64,6 +72,9 @@ export const GitHubRepoDrawer: React.FC<GitHubRepoDrawerProps> = ({
   const handlePickRepo = async (repo: GitHubRepoItem) => {
     setSelectedRepo(repo);
     setChosenBranch(repo.default_branch);
+    setRepoDescriptionDraft(repo.description || '');
+    setDescSavedMsg(null);
+    setDescErrorMsg(null);
     setLoadingRefs(true);
     try {
       const res = await apiFetch(`/api/github/repos/${repo.owner.login}/${repo.name}/refs`);
@@ -77,6 +88,44 @@ export const GitHubRepoDrawer: React.FC<GitHubRepoDrawerProps> = ({
       }
     } finally {
       setLoadingRefs(false);
+    }
+  };
+
+  const handleSaveDescriptionToGitHub = async () => {
+    if (!selectedRepo) return;
+    setSavingDesc(true);
+    setDescSavedMsg(null);
+    setDescErrorMsg(null);
+    try {
+      const res = await apiFetch(
+        `/api/github/repos/${selectedRepo.owner.login}/${selectedRepo.name}/metadata`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: repoDescriptionDraft.trim(),
+          }),
+        }
+      );
+      const payload = (await res.json()) as {
+        ok?: boolean;
+        description?: string;
+        error?: string;
+      };
+      if (!res.ok || !payload.ok) {
+        throw new Error(payload.error || 'Failed to save description to GitHub.');
+      }
+      const nextDesc = payload.description ?? repoDescriptionDraft.trim();
+      setSelectedRepo((prev) => (prev ? { ...prev, description: nextDesc } : prev));
+      setRepos((prev) =>
+        prev.map((r) => (r.id === selectedRepo.id ? { ...r, description: nextDesc } : r))
+      );
+      setDescSavedMsg('Saved description to GitHub');
+      setTimeout(() => setDescSavedMsg(null), 2500);
+    } catch (err) {
+      setDescErrorMsg(err instanceof Error ? err.message : 'Unable to update GitHub description.');
+    } finally {
+      setSavingDesc(false);
     }
   };
 
@@ -98,10 +147,10 @@ export const GitHubRepoDrawer: React.FC<GitHubRepoDrawerProps> = ({
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-              GitHub Account &amp; Private Repository Browser
+              GitHub Account &amp; Repository Browser
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-              Authenticate via GitHub OAuth popup to browse private repositories, branches, and open pull requests.
+              Authenticate via GitHub OAuth popup to browse private repositories, edit GitHub &ldquo;About&rdquo; descriptions, and clone branches or pull requests.
             </p>
           </div>
           <button
@@ -191,9 +240,9 @@ export const GitHubRepoDrawer: React.FC<GitHubRepoDrawerProps> = ({
               </button>
             </div>
 
-            {/* Repo Picker + Branch/PR Selector */}
+            {/* Repo Picker + Branch/PR & Description Editor */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              <div className="lg:col-span-7 border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] rounded-xl overflow-hidden flex flex-col h-72">
+              <div className="lg:col-span-7 border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] rounded-xl overflow-hidden flex flex-col h-80">
                 <div className="p-3 border-b border-slate-200 dark:border-slate-800 relative">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-6 top-1/2 -translate-y-1/2" />
                   <input
@@ -255,10 +304,10 @@ export const GitHubRepoDrawer: React.FC<GitHubRepoDrawerProps> = ({
                 </div>
               </div>
 
-              <div className="lg:col-span-5 border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] rounded-xl p-4 flex flex-col justify-between h-72">
+              <div className="lg:col-span-5 border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] rounded-xl p-4 flex flex-col justify-between h-80">
                 {!selectedRepo ? (
                   <div className="h-full flex items-center justify-center text-center text-xs text-slate-500 px-4">
-                    Select any repository on the left to choose a branch or open pull request to clone and build.
+                    Select any repository on the left to edit its GitHub description, choose a branch or open pull request, and clone.
                   </div>
                 ) : (
                   <>
@@ -272,8 +321,57 @@ export const GitHubRepoDrawer: React.FC<GitHubRepoDrawerProps> = ({
                         </div>
                       </div>
 
+                      {/* GitHub Repository Description Sync */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 text-[11px]">
+                          <label className="font-semibold text-slate-600 dark:text-slate-400">
+                            GitHub &ldquo;About&rdquo; Description
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setRepoDescriptionDraft(REPOFORGE_SHORT_DESCRIPTION)}
+                            className="text-orange-600 dark:text-orange-400 hover:underline font-semibold cursor-pointer"
+                          >
+                            Fill RepoForge Description
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            maxLength={350}
+                            value={repoDescriptionDraft}
+                            onChange={(e) => setRepoDescriptionDraft(e.target.value)}
+                            placeholder="Add or update GitHub repository description..."
+                            className="flex-1 h-8 px-2.5 rounded-md bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-200 focus:outline-none focus:border-orange-500"
+                          />
+                          <button
+                            type="button"
+                            disabled={savingDesc}
+                            onClick={() => void handleSaveDescriptionToGitHub()}
+                            className="h-8 px-2.5 rounded-md border border-cyan-300 dark:border-cyan-600/60 bg-cyan-50 dark:bg-cyan-950/30 hover:bg-cyan-100 dark:hover:bg-cyan-900/40 text-cyan-900 dark:text-cyan-200 text-xs font-semibold inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                          >
+                            {savingDesc ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Save className="w-3 h-3" />
+                            )}
+                            <span>Save</span>
+                          </button>
+                        </div>
+                        {descSavedMsg && (
+                          <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                            {descSavedMsg}
+                          </div>
+                        )}
+                        {descErrorMsg && (
+                          <div className="text-[11px] text-rose-600 dark:text-rose-400">
+                            {descErrorMsg}
+                          </div>
+                        )}
+                      </div>
+
                       {loadingRefs ? (
-                        <div className="flex items-center gap-2 text-xs text-slate-500 py-4">
+                        <div className="flex items-center gap-2 text-xs text-slate-500 py-3">
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-500" />
                           <span>Loading branches &amp; pull requests...</span>
                         </div>
@@ -302,7 +400,7 @@ export const GitHubRepoDrawer: React.FC<GitHubRepoDrawerProps> = ({
                               <div className="text-xs text-slate-600 dark:text-slate-400">
                                 Open Pull Requests ({pulls.length})
                               </div>
-                              <div className="space-y-1 max-h-24 overflow-y-auto">
+                              <div className="space-y-1 max-h-20 overflow-y-auto">
                                 {pulls.map((pr) => (
                                   <button
                                     key={pr.number}

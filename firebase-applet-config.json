@@ -3,6 +3,7 @@
   "appId": "1:545695095733:web:b28dd4fed6cb9519fe17fc",
   "apiKey": "AIzaSyAj15rvsNcHamghaO3wHtN19JuwDeL34nU",
   "authDomain": "trusty-moment-512818-n3.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-gitlaunch-c1ed3784-c40d-491f-98dc-198051a81622",
   "storageBucket": "trusty-moment-512818-n3.firebasestorage.app",
   "messagingSenderId": "545695095733",
   "measurementId": "",

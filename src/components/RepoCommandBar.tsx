@@ -227,7 +227,7 @@ export const RepoCommandBar: React.FC<RepoCommandBarProps> = ({
               className="h-8 px-3 rounded-md border border-cyan-300 dark:border-cyan-600/50 bg-cyan-50 dark:bg-cyan-950/30 hover:bg-cyan-100 dark:hover:bg-cyan-900/40 text-cyan-900 dark:text-cyan-200 font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-              <span>Download Logo</span>
+              <span>Logo &amp; App Description</span>
             </button>
 
             <button
@@ -242,18 +242,18 @@ export const RepoCommandBar: React.FC<RepoCommandBarProps> = ({
             <button
               type="button"
               onClick={onToggleTheme}
-              title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Bright Mode'}
-              className="h-8 px-2.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0B0F17] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+              className="h-8 px-2.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0B0F17] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               {theme === 'light' ? (
                 <>
                   <Moon className="w-3.5 h-3.5 text-slate-600" />
-                  <span>Dark</span>
+                  <span>Dark Mode</span>
                 </>
               ) : (
                 <>
                   <Sun className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Bright</span>
+                  <span>Light Mode</span>
                 </>
               )}
             </button>

@@ -9,6 +9,7 @@ import {
   FileCode2,
   FileText,
   GitBranch,
+  Github,
   Loader2,
   RefreshCw,
   Save,
@@ -17,6 +18,7 @@ import { marked } from 'marked';
 import type {
   GeneratedDocFile,
   GeneratedProjectDocsBundle,
+  GitHubAuthStatus,
   WorkspaceDetail,
 } from '../types';
 import { apiFetch } from '../utils/api';
@@ -25,16 +27,26 @@ import { GoogleDriveExportCard } from './GoogleDriveExportCard';
 interface ProjectDocsWorkflowsPanelProps {
   workspace: WorkspaceDetail;
   onRefreshWorkspace: () => Promise<void>;
+  githubAuth?: GitHubAuthStatus | null;
+  onConnectGitHub?: () => void;
 }
 
 export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps> = ({
   workspace,
   onRefreshWorkspace,
+  githubAuth,
+  onConnectGitHub,
 }) => {
   const [bundle, setBundle] = useState<GeneratedProjectDocsBundle | null>(null);
   const [editedContents, setEditedContents] = useState<Record<string, string>>({});
   const [activePath, setActivePath] = useState<string>('');
   const [viewMode, setViewMode] = useState<'preview' | 'edit'>('preview');
+
+  // Synthesized GitHub "About" Description & Topics State
+  const [githubDescriptionDraft, setGithubDescriptionDraft] = useState('');
+  const [copiedDesc, setCopiedDesc] = useState(false);
+  const [syncingGithubDesc, setSyncingGithubDesc] = useState(false);
+  const [githubDescNotice, setGithubDescNotice] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -46,6 +58,7 @@ export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps>
   const fetchGeneratedBundle = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
+    setGithubDescNotice(null);
     try {
       const res = await apiFetch(`/api/workspaces/${workspace.id}/generated-docs`);
       const payload = (await res.json()) as {
@@ -56,6 +69,7 @@ export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps>
         throw new Error(payload.error || 'Failed to synthesize README and workflows.');
       }
       setBundle(payload.bundle);
+      setGithubDescriptionDraft(payload.bundle.suggestedGithubDescription || '');
       const map: Record<string, string> = {};
       for (const f of payload.bundle.files) {
         map[f.path] = f.content;
@@ -107,6 +121,66 @@ export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps>
       setTimeout(() => setCopied(false), 1800);
     } catch {
       // Ignore clipboard restriction
+    }
+  };
+
+  const handleCopyGithubDescription = async () => {
+    if (!githubDescriptionDraft.trim()) return;
+    try {
+      await navigator.clipboard.writeText(githubDescriptionDraft.trim());
+      setCopiedDesc(true);
+      setTimeout(() => setCopiedDesc(false), 1800);
+    } catch {
+      // Ignore clipboard restriction
+    }
+  };
+
+  const handlePushDescriptionToGitHub = async () => {
+    setErrorMsg(null);
+    setGithubDescNotice(null);
+
+    if (!githubAuth?.connected) {
+      if (onConnectGitHub) {
+        onConnectGitHub();
+      } else {
+        setErrorMsg('Connect your GitHub account first to update repository metadata on GitHub.');
+      }
+      return;
+    }
+
+    setSyncingGithubDesc(true);
+    try {
+      const res = await apiFetch(
+        `/api/github/repos/${workspace.owner}/${workspace.repoName}/metadata`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: githubDescriptionDraft.trim(),
+            topics: bundle?.suggestedGithubTopics,
+          }),
+        }
+      );
+      const payload = (await res.json()) as {
+        ok?: boolean;
+        full_name?: string;
+        error?: string;
+      };
+      if (!res.ok || !payload.ok) {
+        throw new Error(
+          payload.error ||
+            `Failed to update description on ${workspace.owner}/${workspace.repoName} (verify write access).`
+        );
+      }
+      setGithubDescNotice(
+        `Updated GitHub repository description and topics on github.com/${payload.full_name}.`
+      );
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Unable to push description to GitHub repository.'
+      );
+    } finally {
+      setSyncingGithubDesc(false);
     }
   };
 
@@ -206,10 +280,10 @@ export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps>
               </span>
             </div>
             <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-              Tailored README.md &amp; GitHub Actions Workflows Generator
+              Tailored README.md, GitHub Description &amp; Actions Workflows
             </h1>
             <p className="text-xs text-slate-600 dark:text-slate-400 max-w-3xl">
-              Synthesized directly from this project&apos;s detected stack, scripts, dependencies, environment variables, and database schema. Edit any file below, download the pack, or write directly into the workspace.
+              Synthesized directly from this project&apos;s detected stack, scripts, dependencies, environment variables, and database schema. Copy or push the GitHub description, edit any file below, or write directly into the workspace.
             </p>
           </div>
 
@@ -247,6 +321,76 @@ export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps>
             </button>
           </div>
         </div>
+
+        {/* Synthesized GitHub Repository "About" Description & Topics Bar */}
+        {bundle && (
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div>
+                <span className="font-bold text-slate-900 dark:text-slate-100">
+                  Synthesized GitHub &ldquo;About&rdquo; Repository Description
+                </span>
+                {bundle.suggestedGithubTopics && bundle.suggestedGithubTopics.length > 0 && (
+                  <span className="ml-2 font-mono text-cyan-700 dark:text-cyan-400">
+                    ({bundle.suggestedGithubTopics.join(' · ')})
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyGithubDescription()}
+                  className="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  {copiedDesc ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Copied Description</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Description</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={syncingGithubDesc || !githubDescriptionDraft.trim()}
+                  onClick={() => void handlePushDescriptionToGitHub()}
+                  className="h-8 px-3.5 rounded-lg border border-orange-300 dark:border-orange-500/50 bg-orange-50 dark:bg-orange-950/30 hover:bg-orange-100 dark:hover:bg-orange-900/40 text-orange-900 dark:text-orange-200 font-semibold inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
+                >
+                  {syncingGithubDesc ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Github className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+                  )}
+                  <span>
+                    {githubAuth?.connected
+                      ? `Add Description to ${workspace.owner}/${workspace.repoName}`
+                      : 'Connect GitHub to Add Description'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <input
+              type="text"
+              maxLength={350}
+              value={githubDescriptionDraft}
+              onChange={(e) => setGithubDescriptionDraft(e.target.value)}
+              aria-label="Synthesized GitHub Repository Description"
+              className="w-full h-9 px-3.5 rounded-lg bg-slate-50 dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-orange-500"
+            />
+          </div>
+        )}
+
+        {githubDescNotice && (
+          <div className="p-3.5 rounded-xl border border-emerald-300 dark:border-emerald-600/40 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 flex items-center gap-2.5 text-xs">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{githubDescNotice}</span>
+          </div>
+        )}
 
         {confirmOverwriteOpen && (
           <div className="p-4 rounded-xl border border-amber-300 dark:border-amber-600/50 bg-amber-50 dark:bg-amber-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
@@ -415,7 +559,7 @@ export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps>
 
               {activeFile.kind === 'readme' && viewMode === 'preview' ? (
                 <div
-                  className="p-6 text-sm text-slate-700 dark:text-slate-300 leading-relaxed max-h-[600px] overflow-y-auto space-y-3 [&_h1]:text-xl [&_h1]:font-extrabold [&_h1]:text-slate-900 dark:[&_h1]:text-white [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-bold [&_h2]:text-slate-900 dark:[&_h2]:text-slate-100 [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_a]:text-orange-600 dark:[&_a]:text-cyan-400 [&_a]:underline [&_code]:font-mono [&_code]:text-xs [&_code]:bg-slate-100 dark:[&_code]:bg-[#0B0F17] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:p-4 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_table]:w-full [&_table]:border-collapse [&_table]:text-xs [&_th]:border-b [&_th]:border-slate-200 dark:[&_th]:border-slate-700 [&_th]:py-2 [&_th]:px-3 [&_th]:text-left [&_td]:border-b [&_td]:border-slate-100 dark:[&_td]:border-slate-800 [&_td]:py-2 [&_td]:px-3 [&_ul]:list-disc [&_ul]:pl-5"
+                  className="p-6 text-sm text-slate-700 dark:text-slate-300 leading-relaxed max-h-[600px] overflow-y-auto space-y-3 [&_h1]:text-xl [&_h1]:font-extrabold [&_h1]:text-slate-900 dark:[&_h1]:text-white [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-bold [&_h2]:text-slate-900 dark:[&_h2]:text-slate-100 [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_a]:text-orange-600 dark:[&_a]:text-cyan-400 [&_a]:underline [&_code]:font-mono [&_code]:text-xs [&_code]:bg-slate-100 dark:[&_code]:bg-[#0B0F17] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_pre]:bg-slate-100 dark:[&_pre]:bg-slate-900 [&_pre]:text-slate-900 dark:[&_pre]:text-slate-100 [&_pre]:p-4 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:border [&_pre]:border-slate-200 dark:[&_pre]:border-slate-800 [&_table]:w-full [&_table]:border-collapse [&_table]:text-xs [&_th]:border-b [&_th]:border-slate-200 dark:[&_th]:border-slate-700 [&_th]:py-2 [&_th]:px-3 [&_th]:text-left [&_td]:border-b [&_td]:border-slate-100 dark:[&_td]:border-slate-800 [&_td]:py-2 [&_td]:px-3 [&_ul]:list-disc [&_ul]:pl-5"
                   dangerouslySetInnerHTML={{ __html: renderedMarkdownHtml }}
                 />
               ) : (
@@ -429,7 +573,7 @@ export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps>
                   }
                   spellCheck={false}
                   aria-label={`Edit ${activeFile.path}`}
-                  className="w-full h-[560px] p-5 font-mono text-xs leading-relaxed bg-[#0B0F17] text-slate-100 focus:outline-none resize-y"
+                  className="w-full h-[560px] p-5 font-mono text-xs leading-relaxed bg-slate-50 dark:bg-[#0B0F17] text-slate-900 dark:text-slate-100 focus:outline-none resize-y"
                 />
               )}
             </div>

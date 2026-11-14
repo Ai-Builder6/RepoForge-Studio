@@ -1,6 +1,6 @@
 {
-  "name": "GitHub Repo App Importer",
-  "description": "AI-powered Google Ads Responsive Search Ad (RSA) generator, SERP simulator, and Google Ads API payload builder for Tidy Up Cleaning Service.",
+  "name": "RepoForge Studio",
+  "description": "Clone, inspect, compile, and launch any public or private GitHub repository in seconds—complete with live previews, branch diffs, automated README & CI workflows, and Google Drive export.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

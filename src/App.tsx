@@ -4,8 +4,10 @@ import {
   Code2,
   Hammer,
   Minimize2,
+  Moon,
   Play,
   RotateCcw,
+  Sun,
 } from 'lucide-react';
 import type {
   ApiServerState,
@@ -97,15 +99,20 @@ export default function App() {
 
   const bootCheckedRef = useRef(false);
 
-  // Sync theme class onto <html>
+  // Sync theme class and color-scheme onto <html> for the entire application
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.documentElement.style.colorScheme = theme;
     try {
       localStorage.setItem('rf_theme', theme);
     } catch {
       // Ignore storage restrictions
     }
   }, [theme]);
+
+  const toggleWholeAppTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  }, []);
 
   // Browser back/forward routing listener
   useEffect(() => {
@@ -583,8 +590,28 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Zone 3: 1 Primary Action */}
-        <div className="flex items-center shrink-0">
+        {/* Zone 3: Global Theme Toggle + Primary Action */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={toggleWholeAppTheme}
+            aria-label={theme === 'light' ? 'Switch whole app to Dark Mode' : 'Switch whole app to Light Mode'}
+            title={theme === 'light' ? 'Switch whole app to Dark Mode' : 'Switch whole app to Light Mode'}
+            className="h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            {theme === 'light' ? (
+              <>
+                <Moon className="w-3.5 h-3.5 text-slate-600" />
+                <span className="hidden sm:inline">Dark Mode</span>
+              </>
+            ) : (
+              <>
+                <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Light Mode</span>
+              </>
+            )}
+          </button>
+
           {canLaunchPreview ? (
             <button
               type="button"
@@ -609,24 +636,26 @@ export default function App() {
       </header>
 
       {/* Mobile Navigation */}
-      <div className="md:hidden flex items-center gap-4 px-6 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E131F] overflow-x-auto text-xs font-semibold">
-        {topNavLinks.map((link) => (
-          <a
-            key={link.key}
-            href={link.href}
-            onClick={(e) => {
-              e.preventDefault();
-              link.onSelect();
-            }}
-            className={`whitespace-nowrap shrink-0 cursor-pointer ${
-              link.isActive
-                ? 'text-orange-600 dark:text-orange-400'
-                : 'text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            {link.label}
-          </a>
-        ))}
+      <div className="md:hidden flex items-center justify-between gap-4 px-6 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0E131F] overflow-x-auto text-xs font-semibold">
+        <div className="flex items-center gap-4">
+          {topNavLinks.map((link) => (
+            <a
+              key={link.key}
+              href={link.href}
+              onClick={(e) => {
+                e.preventDefault();
+                link.onSelect();
+              }}
+              className={`whitespace-nowrap shrink-0 cursor-pointer ${
+                link.isActive
+                  ? 'text-orange-600 dark:text-orange-400'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
       </div>
 
       {/* Studio Workspace Command Bar (shown on Studio route) */}
@@ -655,7 +684,7 @@ export default function App() {
             githubDrawerOpen={githubDrawerOpen}
             onToggleGithubDrawer={() => setGithubDrawerOpen((v) => !v)}
             theme={theme}
-            onToggleTheme={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+            onToggleTheme={toggleWholeAppTheme}
             onOpenUpgrades={() => navigateTo('/upgrades')}
             onOpenLogoModal={() => setLogoModalOpen(true)}
           />
@@ -792,6 +821,8 @@ export default function App() {
                       await loadWorkspaceDetail(activeWorkspace.id);
                       await refreshWorkspacesList();
                     }}
+                    githubAuth={githubAuth}
+                    onConnectGitHub={() => void handleConnectGitHub()}
                   />
                 )}
 
@@ -858,10 +889,27 @@ export default function App() {
           <nav className="flex flex-wrap items-center justify-center gap-5 font-semibold">
             <button
               type="button"
+              onClick={toggleWholeAppTheme}
+              className="text-slate-700 dark:text-slate-300 hover:text-orange-600 dark:hover:text-orange-400 inline-flex items-center gap-1 whitespace-nowrap cursor-pointer"
+            >
+              {theme === 'light' ? (
+                <>
+                  <Moon className="w-3.5 h-3.5" />
+                  <span>Dark Mode</span>
+                </>
+              ) : (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Light Mode</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => setLogoModalOpen(true)}
               className="text-cyan-700 dark:text-cyan-400 hover:underline whitespace-nowrap cursor-pointer"
             >
-              Download Logo
+              Logo &amp; App Description
             </button>
             <a
               href="/upgrades"
@@ -917,7 +965,16 @@ export default function App() {
         </div>
       </footer>
 
-      <BrandLogoModal isOpen={logoModalOpen} onClose={() => setLogoModalOpen(false)} />
+      <BrandLogoModal
+        isOpen={logoModalOpen}
+        onClose={() => setLogoModalOpen(false)}
+        githubAuth={githubAuth}
+        onConnectGitHub={() => {
+          setLogoModalOpen(false);
+          setGithubDrawerOpen(true);
+          void handleConnectGitHub();
+        }}
+      />
     </div>
   );
 }

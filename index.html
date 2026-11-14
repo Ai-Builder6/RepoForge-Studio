@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GitHub Repo App Importer</title>
-    <meta name="description" content="Import, inspect, and deploy web applications from any GitHub repository into AI Studio." />
-    <meta property="og:title" content="GitHub Repo App Importer" />
-    <meta property="og:description" content="Import, inspect, and deploy web applications from any GitHub repository into AI Studio." />
+    <title>RepoForge Studio</title>
+    <meta name="description" content="Clone, inspect, compile, and launch any public or private GitHub repository in seconds—complete with live previews, branch diffs, automated README &amp; CI workflows, and Google Drive export." />
+    <meta property="og:title" content="RepoForge Studio" />
+    <meta property="og:description" content="Clone, inspect, compile, and launch any public or private GitHub repository in seconds—complete with live previews, branch diffs, automated README &amp; CI workflows, and Google Drive export." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -21,8 +21,18 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('rf_theme');
+          var isDark = saved === 'dark';
+          document.documentElement.classList.toggle('dark', isDark);
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-slate-50 text-slate-900 dark:bg-[#0B0F17] dark:text-slate-100 antialiased selection:bg-orange-500 selection:text-white">
+  <body class="bg-[#F8FAFC] text-slate-900 dark:bg-[#0B0F17] dark:text-slate-100 antialiased selection:bg-orange-500 selection:text-white transition-colors duration-150">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -278,6 +278,8 @@ export interface GeneratedProjectDocsBundle {
   repoFullName: string;
   branch: string;
   generatedAt: string;
+  suggestedGithubDescription: string;
+  suggestedGithubTopics: string[];
   files: GeneratedDocFile[];
 }
 

@@ -278,10 +278,10 @@ export const BuildConsolePanel: React.FC<BuildConsolePanelProps> = ({
 
         <div
           ref={logContainerRef}
-          className="p-5 bg-[#0F172A] font-mono text-xs leading-relaxed h-[320px] overflow-y-auto space-y-1"
+          className="p-5 bg-slate-50 dark:bg-[#0F172A] font-mono text-xs leading-relaxed h-[320px] overflow-y-auto space-y-1"
         >
           {logs.length === 0 ? (
-            <div className="text-slate-400">
+            <div className="text-slate-500 dark:text-slate-400">
               No build logs recorded yet. Click Build Project above to install dependencies and compile the repository.
             </div>
           ) : (
@@ -294,12 +294,12 @@ export const BuildConsolePanel: React.FC<BuildConsolePanelProps> = ({
                   key={i}
                   className={
                     isErr
-                      ? 'text-rose-400 break-words'
+                      ? 'text-rose-700 dark:text-rose-400 break-words'
                       : isWarn
-                      ? 'text-amber-300 break-words'
+                      ? 'text-amber-700 dark:text-amber-300 break-words'
                       : isSuccess
-                      ? 'text-emerald-400 break-words'
-                      : 'text-slate-200 break-words'
+                      ? 'text-emerald-700 dark:text-emerald-400 break-words'
+                      : 'text-slate-800 dark:text-slate-200 break-words'
                   }
                 >
                   {line}
@@ -385,16 +385,16 @@ export const BuildConsolePanel: React.FC<BuildConsolePanelProps> = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-800">
           {/* Subprocess Logs */}
-          <div className="lg:col-span-6 p-4 bg-[#0F172A] flex flex-col h-64">
-            <div className="text-xs text-slate-400 mb-2 font-medium">
+          <div className="lg:col-span-6 p-4 bg-slate-50 dark:bg-[#0F172A] flex flex-col h-64">
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-2 font-medium">
               Subprocess Console Output
             </div>
             <div
               ref={apiLogRef}
-              className="flex-1 overflow-y-auto font-mono text-xs text-slate-200 space-y-1"
+              className="flex-1 overflow-y-auto font-mono text-xs text-slate-800 dark:text-slate-200 space-y-1"
             >
               {apiLogs.length === 0 ? (
-                <span className="text-slate-400">
+                <span className="text-slate-500 dark:text-slate-400">
                   {workspace.apiServer.capable
                     ? `Detected entrypoint "${workspace.apiServer.detectedEntry || 'npm start'}". Click Start API Subprocess to launch.`
                     : 'No default backend server entrypoint detected — specify any .js/.ts file above (or create one in Code & Env) to launch.'}
@@ -444,17 +444,17 @@ export const BuildConsolePanel: React.FC<BuildConsolePanelProps> = ({
               />
             )}
 
-            <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 h-36 overflow-y-auto font-mono text-xs">
+            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 h-36 overflow-y-auto font-mono text-xs">
               {!apiResponse ? (
-                <span className="text-slate-400">
+                <span className="text-slate-500 dark:text-slate-400">
                   Response payload from /sandbox-api/{workspace.id}{reqPath} will render here.
                 </span>
               ) : (
                 <div className="space-y-1.5">
-                  <div className="text-cyan-400 tabular-nums">
+                  <div className="text-cyan-700 dark:text-cyan-400 tabular-nums">
                     HTTP {apiResponse.status} · {apiResponse.durationMs} ms
                   </div>
-                  <pre className="text-slate-100 whitespace-pre-wrap">{apiResponse.body}</pre>
+                  <pre className="text-slate-800 dark:text-slate-100 whitespace-pre-wrap">{apiResponse.body}</pre>
                 </div>
               )}
             </div>

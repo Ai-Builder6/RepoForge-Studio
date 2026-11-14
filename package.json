@@ -1,7 +1,8 @@
 {
-  "name": "react-example",
+  "name": "repoforge-studio",
+  "description": "Clone, inspect, compile, and launch any public or private GitHub repository in seconds—complete with live previews, branch diffs, automated README & CI workflows, and Google Drive export.",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

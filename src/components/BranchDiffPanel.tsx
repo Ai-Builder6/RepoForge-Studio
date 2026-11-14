@@ -534,20 +534,20 @@ export const BranchDiffPanel: React.FC<BranchDiffPanelProps> = ({
                   <div className="p-8 text-center text-xs text-slate-500">Loading file contents...</div>
                 ) : (
                   filePair && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
-                      <div className="p-4 bg-[#0F172A] max-h-96 overflow-auto">
-                        <div className="text-[11px] text-slate-400 font-mono mb-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-800">
+                      <div className="p-4 bg-slate-50 dark:bg-[#0F172A] max-h-96 overflow-auto">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mb-2">
                           Base ({diffReport.baseLabel})
                         </div>
-                        <pre className="text-xs font-mono text-slate-200 whitespace-pre-wrap">
+                        <pre className="text-xs font-mono text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
                           {filePair.baseContent || '(File absent in Base)'}
                         </pre>
                       </div>
-                      <div className="p-4 bg-[#0F172A] max-h-96 overflow-auto">
-                        <div className="text-[11px] text-cyan-400 font-mono mb-2">
+                      <div className="p-4 bg-slate-50 dark:bg-[#0F172A] max-h-96 overflow-auto">
+                        <div className="text-[11px] text-cyan-700 dark:text-cyan-400 font-mono mb-2">
                           Head ({diffReport.headLabel})
                         </div>
-                        <pre className="text-xs font-mono text-slate-200 whitespace-pre-wrap">
+                        <pre className="text-xs font-mono text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
                           {filePair.headContent || '(File absent in Head)'}
                         </pre>
                       </div>

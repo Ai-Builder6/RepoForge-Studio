@@ -29,6 +29,7 @@ interface ProjectDocsWorkflowsPanelProps {
   onRefreshWorkspace: () => Promise<void>;
   githubAuth?: GitHubAuthStatus | null;
   onConnectGitHub?: () => void;
+  onOpenWorkspaceHub?: () => void;
 }
 
 export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps> = ({
@@ -36,6 +37,7 @@ export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps>
   onRefreshWorkspace,
   githubAuth,
   onConnectGitHub,
+  onOpenWorkspaceHub,
 }) => {
   const [bundle, setBundle] = useState<GeneratedProjectDocsBundle | null>(null);
   const [editedContents, setEditedContents] = useState<Record<string, string>>({});
@@ -586,6 +588,7 @@ export const ProjectDocsWorkflowsPanel: React.FC<ProjectDocsWorkflowsPanelProps>
         workspace={workspace}
         customDocs={customDocsForDrive}
         onWorkspaceUpdated={onRefreshWorkspace}
+        onOpenWorkspaceHub={onOpenWorkspaceHub}
       />
     </div>
   );

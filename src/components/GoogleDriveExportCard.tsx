@@ -3,14 +3,20 @@ import {
   AlertCircle,
   CheckCircle2,
   ExternalLink,
+  FileSpreadsheet,
   FolderPlus,
   Loader2,
   LogOut,
   RefreshCw,
+  Table,
   UploadCloud,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
-import type { GoogleDriveUploadResult, WorkspaceDetail } from '../types';
+import type {
+  GoogleDriveUploadResult,
+  GoogleSheetsExportResult,
+  WorkspaceDetail,
+} from '../types';
 import { apiFetch } from '../utils/api';
 import { formatBytes } from '../utils/format';
 import {
@@ -25,6 +31,7 @@ interface GoogleDriveExportCardProps {
   workspace: WorkspaceDetail;
   customDocs?: Array<{ path: string; content: string }>;
   onWorkspaceUpdated?: () => Promise<void>;
+  onOpenWorkspaceHub?: () => void;
 }
 
 const OfficialGoogleGMark: React.FC = () => (
@@ -52,6 +59,7 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
   workspace,
   customDocs,
   onWorkspaceUpdated,
+  onOpenWorkspaceHub,
 }) => {
   const defaultFolderName = `RepoForge - ${workspace.owner}-${workspace.repoName} (${
     workspace.branch || 'main'
@@ -65,9 +73,11 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
 
   const [signingIn, setSigningIn] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [exportingSheet, setExportingSheet] = useState(false);
   const [confirmRepeatOpen, setConfirmRepeatOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [uploadResult, setUploadResult] = useState<GoogleDriveUploadResult | null>(null);
+  const [sheetResult, setSheetResult] = useState<GoogleSheetsExportResult | null>(null);
 
   useEffect(() => {
     setFolderName(
@@ -76,6 +86,7 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
       })`
     );
     setUploadResult(null);
+    setSheetResult(null);
     setErrorMsg(null);
     setConfirmRepeatOpen(false);
   }, [workspace.id, workspace.owner, workspace.repoName, workspace.branch, workspace.commitShort]);
@@ -101,25 +112,31 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
     }
   };
 
+  const ensureWorkspaceToken = async (): Promise<string | null> => {
+    const cached = getCachedDriveAccessToken();
+    if (cached) return cached;
+    try {
+      setSigningIn(true);
+      const signed = await signInWithGoogleForDrive(false);
+      return signed.accessToken;
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error
+          ? err.message
+          : 'Google Drive & Sheets permission is required to export.'
+      );
+      return null;
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
   const executeDriveUpload = async () => {
     setErrorMsg(null);
     setConfirmRepeatOpen(false);
 
-    let token = getCachedDriveAccessToken();
-    if (!token) {
-      try {
-        setSigningIn(true);
-        const signed = await signInWithGoogleForDrive(false);
-        token = signed.accessToken;
-      } catch (err) {
-        setErrorMsg(
-          err instanceof Error ? err.message : 'Google Drive permission is required to upload.'
-        );
-        return;
-      } finally {
-        setSigningIn(false);
-      }
-    }
+    const token = await ensureWorkspaceToken();
+    if (!token) return;
 
     setUploading(true);
     try {
@@ -164,6 +181,51 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
     }
   };
 
+  const handleExportGoogleSheetAudit = async () => {
+    setErrorMsg(null);
+    const token = await ensureWorkspaceToken();
+    if (!token) return;
+
+    setExportingSheet(true);
+    try {
+      const res = await apiFetch(`/api/workspaces/${workspace.id}/sheets-export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          spreadsheetTitle: `RepoForge Audit - ${workspace.owner}/${workspace.repoName} (${
+            workspace.branch || 'main'
+          }@${workspace.commitShort || 'head'})`,
+          folderId: uploadResult?.folderId,
+        }),
+      });
+
+      const payload = (await res.json()) as {
+        result?: GoogleSheetsExportResult;
+        error?: string;
+      };
+
+      if (res.status === 401 || res.status === 403) {
+        clearCachedDriveAccessToken();
+        throw new Error(
+          'Your Google Sheets session expired or lacked permission. Click Sign in with Google and try again.'
+        );
+      }
+
+      if (!res.ok || !payload.result) {
+        throw new Error(payload.error || 'Failed to export repository audit to Google Sheets.');
+      }
+
+      setSheetResult(payload.result);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Google Sheets export failed.');
+    } finally {
+      setExportingSheet(false);
+    }
+  };
+
   const handleUploadButtonClick = () => {
     if (uploadResult && uploadResult.folderName === (folderName.trim() || defaultFolderName)) {
       setConfirmRepeatOpen(true);
@@ -179,19 +241,30 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
           <FolderPlus className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
           <div>
             <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              Export Full Project to Google Drive Folder
+              Google Drive Project Export &amp; Google Sheets Audit
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Creates a dedicated folder in your Google Drive containing the full project archive, mirrored source tree, README, and workflows.
+              Mirror this repository into a Google Drive folder or export a 4-tab dependency, language, and build-health workbook to Google Sheets.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {onOpenWorkspaceHub && (
+            <button
+              type="button"
+              onClick={onOpenWorkspaceHub}
+              className="h-8 px-3 rounded-md border border-emerald-300 dark:border-emerald-700/70 bg-emerald-50 dark:bg-emerald-950/35 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-xs font-semibold text-emerald-800 dark:text-emerald-300 inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Open Drive &amp; Sheets Studio</span>
+            </button>
+          )}
+
           {!hasDriveToken ? (
             <button
               type="button"
-              disabled={signingIn || uploading}
+              disabled={signingIn || uploading || exportingSheet}
               onClick={() => void handleGoogleSignIn(false)}
               className="h-10 px-4 rounded border bg-[#FFFFFF] border-[#DADCE0] text-[#3C4043] text-sm font-medium inline-flex items-center gap-2.5 shadow-2xs hover:bg-[#F8F9FA] transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60"
             >
@@ -205,7 +278,7 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
           ) : (
             <div className="flex items-center gap-2 text-xs">
               <span className="text-slate-600 dark:text-slate-300 font-medium truncate max-w-44">
-                {authUser?.email || 'Google Drive connected'}
+                {authUser?.email || 'Google Workspace connected'}
               </span>
               <button
                 type="button"
@@ -219,7 +292,7 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
               <button
                 type="button"
                 onClick={() => void signOutFirebase()}
-                title="Disconnect Google Drive"
+                title="Disconnect Google Workspace"
                 className="h-8 px-2.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-300 inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <LogOut className="w-3 h-3" />
@@ -231,7 +304,7 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
 
       <div className="p-5 space-y-4">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
-          <div className="lg:col-span-7 space-y-1.5">
+          <div className="lg:col-span-6 space-y-1.5">
             <label
               htmlFor={`drive-folder-name-${workspace.id}`}
               className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
@@ -249,22 +322,41 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
             />
           </div>
 
-          <div className="lg:col-span-5 flex items-center justify-end">
+          <div className="lg:col-span-6 flex flex-wrap items-center justify-end gap-2.5">
             <button
               type="button"
-              disabled={uploading || signingIn}
+              disabled={exportingSheet || uploading || signingIn}
+              onClick={() => void handleExportGoogleSheetAudit()}
+              className="w-full sm:w-auto h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              {exportingSheet ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Creating Google Sheet...</span>
+                </>
+              ) : (
+                <>
+                  <Table className="w-4 h-4" />
+                  <span>Export Audit to Google Sheets</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              disabled={uploading || exportingSheet || signingIn}
               onClick={handleUploadButtonClick}
-              className="w-full lg:w-auto h-10 px-5 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="w-full sm:w-auto h-10 px-4 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               {uploading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Creating Folder &amp; Uploading Project...</span>
+                  <span>Uploading to Drive...</span>
                 </>
               ) : (
                 <>
                   <UploadCloud className="w-4 h-4" />
-                  <span>Upload Full Project to Google Drive</span>
+                  <span>Upload Project to Google Drive</span>
                 </>
               )}
             </button>
@@ -365,6 +457,32 @@ export const GoogleDriveExportCard: React.FC<GoogleDriveExportCardProps> = ({
                 </a>
               </div>
             </div>
+          </div>
+        )}
+
+        {sheetResult && (
+          <div className="p-4 rounded-xl border border-emerald-300 dark:border-emerald-600/40 bg-emerald-50/70 dark:bg-emerald-950/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-start gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold text-slate-900 dark:text-white">
+                  Created Google Sheet: {sheetResult.title}
+                </div>
+                <div className="text-slate-600 dark:text-slate-300 font-mono tabular-nums mt-0.5">
+                  {sheetResult.totalRowsWritten} rows across {sheetResult.tabNames.join(' · ')}
+                </div>
+              </div>
+            </div>
+
+            <a
+              href={sheetResult.spreadsheetUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="h-9 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            >
+              <span>Open in Google Sheets</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           </div>
         )}
       </div>

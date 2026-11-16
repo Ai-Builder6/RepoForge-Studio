@@ -1,0 +1,297 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity Blueprint 1: UserProfile (/users/{userId})
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'displayName', 'createdAt', 'updatedAt']) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+             data.uid == request.auth.uid &&
+             data.uid == userId &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    // Entity Blueprint 2: SavedWorkspaceSnapshot (/users/{userId}/repoforge_workspaces/{workspaceId})
+    function isValidSavedWorkspaceSnapshot(data, userId, workspaceId) {
+      return data.keys().hasAll([
+               'workspaceId',
+               'ownerId',
+               'repoUrl',
+               'repoFullName',
+               'branch',
+               'commitShort',
+               'framework',
+               'modelCount',
+               'totalFiles',
+               'totalBytes',
+               'notes',
+               'createdAt',
+               'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'workspaceId',
+               'ownerId',
+               'repoUrl',
+               'repoFullName',
+               'branch',
+               'commitShort',
+               'framework',
+               'modelCount',
+               'totalFiles',
+               'totalBytes',
+               'notes',
+               'createdAt',
+               'updatedAt'
+             ]) &&
+             data.workspaceId is string && data.workspaceId.size() >= 1 && data.workspaceId.size() <= 128 &&
+             data.workspaceId.matches('^[a-zA-Z0-9_\\-]+$') &&
+             data.workspaceId == workspaceId &&
+             data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+             data.ownerId == request.auth.uid &&
+             data.ownerId == userId &&
+             data.repoUrl is string && data.repoUrl.size() >= 1 && data.repoUrl.size() <= 512 &&
+             data.repoUrl.matches('^https://github\\.com/[a-zA-Z0-9_\\.\\-]+/[a-zA-Z0-9_\\.\\-]+.*$') &&
+             data.repoFullName is string && data.repoFullName.size() >= 3 && data.repoFullName.size() <= 200 &&
+             data.branch is string && data.branch.size() >= 1 && data.branch.size() <= 128 &&
+             data.commitShort is string && data.commitShort.size() >= 1 && data.commitShort.size() <= 40 &&
+             data.framework is string && data.framework.size() >= 1 && data.framework.size() <= 120 &&
+             data.modelCount is int && data.modelCount >= 0 && data.modelCount <= 500 &&
+             data.totalFiles is int && data.totalFiles >= 0 && data.totalFiles <= 500000 &&
+             data.totalBytes is int && data.totalBytes >= 0 && data.totalBytes <= 10737418240 &&
+             data.notes is string && data.notes.size() <= 1000 &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    // Entity Blueprint 3: WorkspaceReviewNote (/users/{userId}/repoforge_workspaces/{workspaceId}/review_notes/{noteId})
+    function isValidWorkspaceReviewNote(data, userId, workspaceId, noteId) {
+      return data.keys().hasAll([
+               'noteId',
+               'workspaceId',
+               'ownerId',
+               'routePath',
+               'comment',
+               'status',
+               'createdAt',
+               'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'noteId',
+               'workspaceId',
+               'ownerId',
+               'routePath',
+               'comment',
+               'status',
+               'createdAt',
+               'updatedAt'
+             ]) &&
+             data.noteId is string && data.noteId.size() >= 1 && data.noteId.size() <= 128 &&
+             data.noteId.matches('^[a-zA-Z0-9_\\-]+$') &&
+             data.noteId == noteId &&
+             data.workspaceId is string && data.workspaceId.size() >= 1 && data.workspaceId.size() <= 128 &&
+             data.workspaceId.matches('^[a-zA-Z0-9_\\-]+$') &&
+             data.workspaceId == workspaceId &&
+             data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+             data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+             data.ownerId == request.auth.uid &&
+             data.ownerId == userId &&
+             data.routePath is string && data.routePath.size() >= 1 && data.routePath.size() <= 200 &&
+             data.comment is string && data.comment.size() >= 1 && data.comment.size() <= 1000 &&
+             data.status is string && data.status.size() >= 4 && data.status.size() <= 16 &&
+             (data.status == 'open' || data.status == 'resolved') &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function hasValidParentUser(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+    }
+
+    function hasValidParentWorkspace(userId, workspaceId) {
+      return exists(/databases/$(database)/documents/users/$(userId)/repoforge_workspaces/$(workspaceId)) &&
+             get(/databases/$(database)/documents/users/$(userId)/repoforge_workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+    }
+
+    // Collection 1: Root Non-PII User Profile
+    match /users/{userId} {
+      allow get: if isOwner(userId) &&
+                 isValidId(userId) &&
+                 (resource == null || existing().uid == request.auth.uid);
+      allow list: if false;
+
+      allow create: if isOwner(userId) &&
+                    isValidId(userId) &&
+                    isValidUserProfile(incoming(), userId) &&
+                    incoming().createdAt == request.time &&
+                    incoming().updatedAt == request.time;
+
+      allow update: if isOwner(userId) &&
+                    isValidId(userId) &&
+                    isValidUserProfile(incoming(), userId) &&
+                    existing().uid == request.auth.uid &&
+                    incoming().uid == existing().uid &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().updatedAt == request.time &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']);
+
+      allow delete: if false;
+
+      // Collection 2: Saved Workspace Snapshots
+      match /repoforge_workspaces/{workspaceId} {
+        allow get: if isOwner(userId) &&
+                   isValidId(userId) &&
+                   isValidId(workspaceId) &&
+                   (resource == null || existing().ownerId == request.auth.uid) &&
+                   hasValidParentUser(userId);
+
+        allow list: if isOwner(userId) &&
+                    isValidId(userId) &&
+                    existing().ownerId == request.auth.uid;
+
+        allow create: if isOwner(userId) &&
+                      isValidId(userId) &&
+                      isValidId(workspaceId) &&
+                      isValidSavedWorkspaceSnapshot(incoming(), userId, workspaceId) &&
+                      incoming().createdAt == request.time &&
+                      incoming().updatedAt == request.time &&
+                      hasValidParentUser(userId);
+
+        allow update: if isOwner(userId) &&
+                      isValidId(userId) &&
+                      isValidId(workspaceId) &&
+                      isValidSavedWorkspaceSnapshot(incoming(), userId, workspaceId) &&
+                      existing().ownerId == request.auth.uid &&
+                      incoming().ownerId == existing().ownerId &&
+                      incoming().workspaceId == existing().workspaceId &&
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().updatedAt == request.time &&
+                      (
+                        // Action 1: Resync repository telemetry snapshot
+                        incoming().diff(existing()).affectedKeys().hasOnly([
+                          'repoUrl',
+                          'repoFullName',
+                          'branch',
+                          'commitShort',
+                          'framework',
+                          'modelCount',
+                          'totalFiles',
+                          'totalBytes',
+                          'notes',
+                          'updatedAt'
+                        ]) ||
+                        // Action 2: Edit developer summary notes only
+                        incoming().diff(existing()).affectedKeys().hasOnly(['notes', 'updatedAt'])
+                      ) &&
+                      hasValidParentUser(userId);
+
+        allow delete: if isOwner(userId) &&
+                      isValidId(userId) &&
+                      isValidId(workspaceId) &&
+                      existing().ownerId == request.auth.uid &&
+                      hasValidParentUser(userId);
+
+        // Collection 3: Workspace QA Review Notes (with Terminal State Locking on status == 'resolved')
+        match /review_notes/{noteId} {
+          allow get: if isOwner(userId) &&
+                     isValidId(userId) &&
+                     isValidId(workspaceId) &&
+                     isValidId(noteId) &&
+                     (resource == null || existing().ownerId == request.auth.uid) &&
+                     hasValidParentWorkspace(userId, workspaceId);
+
+          allow list: if isOwner(userId) &&
+                      isValidId(userId) &&
+                      isValidId(workspaceId) &&
+                      existing().ownerId == request.auth.uid;
+
+          allow create: if isOwner(userId) &&
+                        isValidId(userId) &&
+                        isValidId(workspaceId) &&
+                        isValidId(noteId) &&
+                        isValidWorkspaceReviewNote(incoming(), userId, workspaceId, noteId) &&
+                        incoming().status == 'open' &&
+                        incoming().createdAt == request.time &&
+                        incoming().updatedAt == request.time &&
+                        hasValidParentWorkspace(userId, workspaceId);
+
+          allow update: if isOwner(userId) &&
+                        isValidId(userId) &&
+                        isValidId(workspaceId) &&
+                        isValidId(noteId) &&
+                        isValidWorkspaceReviewNote(incoming(), userId, workspaceId, noteId) &&
+                        existing().ownerId == request.auth.uid &&
+                        existing().status != 'resolved' &&
+                        incoming().ownerId == existing().ownerId &&
+                        incoming().workspaceId == existing().workspaceId &&
+                        incoming().noteId == existing().noteId &&
+                        incoming().createdAt == existing().createdAt &&
+                        incoming().updatedAt == request.time &&
+                        (
+                          // Action 1: Edit open note text or route
+                          (
+                            existing().status == 'open' &&
+                            incoming().status == 'open' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly([
+                              'routePath',
+                              'comment',
+                              'updatedAt'
+                            ])
+                          ) ||
+                          // Action 2: Resolve open note (transitions into locked terminal state)
+                          (
+                            existing().status == 'open' &&
+                            incoming().status == 'resolved' &&
+                            incoming().diff(existing()).affectedKeys().hasOnly([
+                              'status',
+                              'updatedAt'
+                            ])
+                          )
+                        ) &&
+                        hasValidParentWorkspace(userId, workspaceId);
+
+          allow delete: if isOwner(userId) &&
+                        isValidId(userId) &&
+                        isValidId(workspaceId) &&
+                        isValidId(noteId) &&
+                        existing().ownerId == request.auth.uid &&
+                        hasValidParentWorkspace(userId, workspaceId);
+        }
+      }
+    }
+  }
+}

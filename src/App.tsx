@@ -27,6 +27,7 @@ import { RepoCommandBar } from './components/RepoCommandBar';
 import { GitHubRepoDrawer } from './components/GitHubRepoDrawer';
 import { OverviewPanel } from './components/OverviewPanel';
 import { ProjectDocsWorkflowsPanel } from './components/ProjectDocsWorkflowsPanel';
+import { GoogleWorkspacePanel } from './components/GoogleWorkspacePanel';
 import { CodeConfigPanel } from './components/CodeConfigPanel';
 import { BuildConsolePanel } from './components/BuildConsolePanel';
 import { LivePreviewPanel } from './components/LivePreviewPanel';
@@ -39,7 +40,7 @@ import {
   TermsPage,
 } from './components/LegalAndSupportPages';
 
-type NavTab = 'overview' | 'docs' | 'code' | 'build' | 'preview' | 'diff';
+type NavTab = 'overview' | 'docs' | 'workspace' | 'code' | 'build' | 'preview' | 'diff';
 type RouteView = 'studio' | 'upgrades' | 'support' | 'privacy' | 'contact' | 'terms';
 
 function resolveRouteFromPathname(pathname: string): RouteView {
@@ -504,6 +505,7 @@ export default function App() {
   const studioTabs: Array<{ id: NavTab; label: string }> = [
     { id: 'overview', label: 'Overview' },
     { id: 'docs', label: 'README & Workflows' },
+    { id: 'workspace', label: 'Drive & Sheets' },
     { id: 'code', label: 'Code & Env' },
     { id: 'build', label: 'Build & API' },
     { id: 'preview', label: 'Live Preview' },
@@ -811,6 +813,12 @@ export default function App() {
                       await loadWorkspaceDetail(activeWorkspace.id);
                     }}
                     onOpenDocsWorkflows={() => setActiveTab('docs')}
+                    onOpenWorkspaceHub={() => setActiveTab('workspace')}
+                    onImportSavedRepo={(savedUrl, savedBranch) => {
+                      setRepoInput(savedUrl);
+                      setBranchInput(savedBranch);
+                      void handleImport(false, savedUrl, savedBranch);
+                    }}
                   />
                 )}
 
@@ -823,6 +831,21 @@ export default function App() {
                     }}
                     githubAuth={githubAuth}
                     onConnectGitHub={() => void handleConnectGitHub()}
+                    onOpenWorkspaceHub={() => setActiveTab('workspace')}
+                  />
+                )}
+
+                {activeTab === 'workspace' && (
+                  <GoogleWorkspacePanel
+                    workspace={activeWorkspace}
+                    onRefreshWorkspace={async () => {
+                      await loadWorkspaceDetail(activeWorkspace.id);
+                      await refreshWorkspacesList();
+                    }}
+                    onOpenFileInEditor={(filePath) => {
+                      setEditorTargetFile(filePath);
+                      setActiveTab('code');
+                    }}
                   />
                 )}
 

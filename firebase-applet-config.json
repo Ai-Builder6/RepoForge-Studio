@@ -1,12 +1,12 @@
 {
-  "projectId": "trusty-moment-512818-n3",
-  "appId": "1:545695095733:web:b28dd4fed6cb9519fe17fc",
-  "apiKey": "AIzaSyAj15rvsNcHamghaO3wHtN19JuwDeL34nU",
-  "authDomain": "trusty-moment-512818-n3.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-gitlaunch-c1ed3784-c40d-491f-98dc-198051a81622",
-  "storageBucket": "trusty-moment-512818-n3.firebasestorage.app",
-  "messagingSenderId": "545695095733",
+  "projectId": "gen-lang-client-0786401693",
+  "appId": "1:902056022269:web:6519438eccbb578a51ae94",
+  "apiKey": "AIzaSyArhJHS9RKwxUw_9CbjhR5_bhjmjrSijCc",
+  "authDomain": "gen-lang-client-0786401693.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-repoforgestudio-ba25b755-11cb-4979-8f59-16fc2857d028",
+  "storageBucket": "gen-lang-client-0786401693.firebasestorage.app",
+  "messagingSenderId": "902056022269",
   "measurementId": "",
-  "oAuthClientId": "545695095733-pb5dodbi8h4hk1daijgpbfsgi3b6a4hp.apps.googleusercontent.com",
+  "oAuthClientId": "902056022269-5s7triu16pj82lsmmlegvvb70ajo50a8.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

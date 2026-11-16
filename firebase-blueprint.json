@@ -1,38 +1,88 @@
 {
   "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Non-PII root workspace owner profile anchoring user-scoped subcollections.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the account owner."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Public display handle without email or phone PII."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was initialized."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "SavedWorkspaceSnapshot": {
       "title": "SavedWorkspaceSnapshot",
-      "description": "Persisted metadata and extracted schema summary for an imported GitHub repository workspace.",
+      "description": "Persisted metadata, inspection telemetry, and schema summary for an imported GitHub repository workspace.",
       "type": "object",
       "properties": {
         "workspaceId": {
           "type": "string",
+          "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$",
           "description": "Unique workspace identifier."
         },
         "ownerId": {
           "type": "string",
+          "minLength": 1,
           "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
           "description": "Firebase Auth UID of the workspace owner."
         },
         "repoUrl": {
           "type": "string",
+          "minLength": 1,
           "maxLength": 512,
+          "pattern": "^https://github\\.com/[a-zA-Z0-9_\\.\\-]+/[a-zA-Z0-9_\\.\\-]+.*$",
           "description": "Canonical GitHub repository URL."
+        },
+        "repoFullName": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200,
+          "description": "Owner/repository full name."
         },
         "branch": {
           "type": "string",
+          "minLength": 1,
           "maxLength": 128,
           "description": "Cloned git branch name."
         },
         "commitShort": {
           "type": "string",
+          "minLength": 1,
           "maxLength": 40,
           "description": "Abbreviated git commit SHA."
         },
         "framework": {
           "type": "string",
+          "minLength": 1,
           "maxLength": 120,
           "description": "Detected application framework."
         },
@@ -40,27 +90,130 @@
           "type": "number",
           "description": "Number of database schema models detected."
         },
-        "savedAtIso": {
+        "totalFiles": {
+          "type": "number",
+          "description": "Indexed file count in the cloned repository."
+        },
+        "totalBytes": {
+          "type": "number",
+          "description": "Total indexed repository size in bytes."
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1000,
+          "description": "Optional developer summary or release note."
+        },
+        "createdAt": {
           "type": "string",
           "format": "date-time",
-          "maxLength": 64,
-          "description": "ISO timestamp when snapshot was synced."
+          "description": "Server timestamp when snapshot was first created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when snapshot was last synced."
         }
       },
       "required": [
         "workspaceId",
         "ownerId",
         "repoUrl",
+        "repoFullName",
         "branch",
+        "commitShort",
         "framework",
-        "savedAtIso"
+        "modelCount",
+        "totalFiles",
+        "totalBytes",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WorkspaceReviewNote": {
+      "title": "WorkspaceReviewNote",
+      "description": "Route-scoped QA review checklist item attached to a saved repository workspace snapshot.",
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique review note identifier."
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Parent workspace identifier."
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the note author/owner."
+        },
+        "routePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Preview route or file path under review."
+        },
+        "comment": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "QA observation or checklist instruction."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "resolved"
+          ],
+          "minLength": 4,
+          "maxLength": 16,
+          "description": "Lifecycle status; resolved is a locked terminal state."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when review note was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when review note was last updated."
+        }
+      },
+      "required": [
+        "noteId",
+        "workspaceId",
+        "ownerId",
+        "routePath",
+        "comment",
+        "status",
+        "createdAt",
+        "updatedAt"
       ]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Non-PII root user profile anchoring user-owned workspace snapshots."
+    },
     "/users/{userId}/repoforge_workspaces/{workspaceId}": {
       "schema": "SavedWorkspaceSnapshot",
       "description": "User-scoped saved repository inspection and schema snapshots."
+    },
+    "/users/{userId}/repoforge_workspaces/{workspaceId}/review_notes/{noteId}": {
+      "schema": "WorkspaceReviewNote",
+      "description": "QA review notes belonging to a saved workspace snapshot."
     }
   }
 }

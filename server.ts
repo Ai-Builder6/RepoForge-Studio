@@ -28,6 +28,7 @@ import type {
   GitHubRepoItem,
   GitHubUser,
   GoogleDriveUploadResult,
+  GoogleSheetsExportResult,
   LanguageStat,
   NormalizationAction,
   SmokeProbeCheck,
@@ -4008,6 +4009,235 @@ async function startServer() {
         err instanceof Error ? err.message : 'Failed to upload project to Google Drive.';
       broadcastLog(ws.id, `Google Drive upload error: ${message}`);
       res.status(status >= 400 && status < 600 ? status : 500).json({ error: message });
+    }
+  });
+
+  app.post('/api/workspaces/:id/sheets-export', async (req: Request, res: Response) => {
+    const ws = workspaces.get(String(req.params.id));
+    if (!ws) {
+      res.status(404).json({ error: 'Workspace not found' });
+      return;
+    }
+
+    const authHeader = req.headers.authorization || '';
+    const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!accessToken) {
+      res.status(401).json({
+        error: 'Missing Google Sheets authorization token. Sign in with Google first.',
+      });
+      return;
+    }
+
+    const { spreadsheetTitle, folderId } = (req.body || {}) as {
+      spreadsheetTitle?: string;
+      folderId?: string;
+    };
+
+    const resolvedTitle =
+      (spreadsheetTitle || '').trim() ||
+      `RepoForge Audit - ${ws.owner}/${ws.repoName} (${ws.branch || 'main'}@${ws.commitShort || 'head'})`;
+
+    const tabNames = [
+      'Workspace Overview',
+      'Dependencies',
+      'Languages & Env',
+      'Smoke Probe & Artifacts',
+    ];
+
+    try {
+      broadcastLog(ws.id, `Creating Google Sheets audit workbook "${resolvedTitle}"...`);
+
+      const createRes = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          properties: { title: resolvedTitle },
+          sheets: tabNames.map((title) => ({
+            properties: {
+              title,
+              gridProperties: { frozenRowCount: 1 },
+            },
+          })),
+        }),
+      });
+
+      if (!createRes.ok) {
+        const errText = await createRes.text();
+        res.status(createRes.status).json({
+          error: `Google Sheets creation failed (${createRes.status}): ${errText.slice(0, 260)}`,
+        });
+        return;
+      }
+
+      const createdSheet = (await createRes.json()) as {
+        spreadsheetId: string;
+        spreadsheetUrl?: string;
+        properties?: { title?: string };
+      };
+
+      const overviewRows: Array<Array<string | number>> = [
+        ['Field', 'Value'],
+        ['Exported By', 'RepoForge Studio'],
+        ['Exported At (ISO)', new Date().toISOString()],
+        ['Repository', `${ws.owner}/${ws.repoName}`],
+        ['Repository URL', ws.repoUrl],
+        ['Branch', ws.branch || 'main'],
+        ['Commit SHA', ws.commitHash || ws.commitShort || 'head'],
+        ['Commit Author', ws.commitAuthor || 'Unknown'],
+        ['Latest Commit Message', ws.commitMessage || ''],
+        ['Target Sub-Path', ws.targetSubPath || '(Repository Root)'],
+        ['Detected Stack', ws.framework],
+        ['Package Manager', ws.packageManager],
+        ['Build Strategy', ws.buildStrategy],
+        ['Build Status', ws.status],
+        ['Build Duration (ms)', ws.buildDurationMs ?? 0],
+        ['Indexed Files', ws.totalFiles],
+        ['Indexed Size (Bytes)', ws.totalBytes],
+        [
+          'Database Schema',
+          ws.databaseSchema.detected
+            ? `${ws.databaseSchema.models.length} model(s) (${ws.databaseSchema.ormType})`
+            : 'None detected',
+        ],
+        ['Smoke Probe Status', ws.smokeProbe?.overallStatus || 'not-run'],
+      ];
+
+      for (const [scriptName, scriptCmd] of Object.entries(ws.scripts)) {
+        overviewRows.push([`npm script: ${scriptName}`, scriptCmd]);
+      }
+
+      const depRows: Array<Array<string | number>> = [
+        ['Package Name', 'Dependency Scope', 'Version Spec', 'Compatibility Note'],
+        ...(ws.dependencies.length > 0
+          ? ws.dependencies.map((d) => [d.name, d.kind, d.version, d.note || ''])
+          : [['(none)', '-', '-', 'Zero external npm dependencies']]),
+      ];
+
+      const langAndEnvRows: Array<Array<string | number>> = [
+        ['Record Type', 'Language / Env Key', 'File Count / Source', 'Bytes', 'Share (%)'],
+        ...ws.languages.map((l) => {
+          const share = ws.totalBytes > 0 ? Number(((l.bytes / ws.totalBytes) * 100).toFixed(2)) : 0;
+          return ['Language', l.language, l.files, l.bytes, share];
+        }),
+        ...ws.envVars.map((env) => ['Env Variable', env.key, env.source, '', '']),
+      ];
+
+      const probeAndArtifactRows: Array<Array<string | number>> = [
+        ['Entry Kind', 'Name / Path', 'Status / Category', 'Metric / Bytes', 'Details'],
+        ...(ws.smokeProbe?.checks || []).map((chk) => [
+          'Smoke Check',
+          chk.name,
+          chk.status,
+          chk.metric || '',
+          chk.detail,
+        ]),
+        ...(ws.artifacts || []).map((art) => [
+          'Build Artifact',
+          art.path,
+          art.category,
+          art.size,
+          '',
+        ]),
+      ];
+      if (probeAndArtifactRows.length === 1) {
+        probeAndArtifactRows.push([
+          'Info',
+          'No build artifacts yet',
+          'pending',
+          0,
+          'Run Build Project to populate Smoke Probe checks and bundle artifacts.',
+        ]);
+      }
+
+      const batchRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(
+          createdSheet.spreadsheetId
+        )}/values:batchUpdate`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            valueInputOption: 'USER_ENTERED',
+            data: [
+              { range: "'Workspace Overview'!A1", values: overviewRows },
+              { range: "'Dependencies'!A1", values: depRows },
+              { range: "'Languages & Env'!A1", values: langAndEnvRows },
+              { range: "'Smoke Probe & Artifacts'!A1", values: probeAndArtifactRows },
+            ],
+          }),
+        }
+      );
+
+      if (!batchRes.ok) {
+        const errText = await batchRes.text();
+        res.status(batchRes.status).json({
+          error: `Failed to populate Google Sheet rows (${batchRes.status}): ${errText.slice(0, 240)}`,
+        });
+        return;
+      }
+
+      const batchJson = (await batchRes.json()) as { totalUpdatedRows?: number };
+      const cleanFolderId = (folderId || '').trim();
+
+      if (cleanFolderId) {
+        const metaRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+            createdSheet.spreadsheetId
+          )}?fields=parents`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        const metaJson = metaRes.ok
+          ? ((await metaRes.json()) as { parents?: string[] })
+          : { parents: [] };
+        const removeParents = (metaJson.parents || []).join(',');
+        const moveQuery = new URLSearchParams({ addParents: cleanFolderId, fields: 'id,parents' });
+        if (removeParents) moveQuery.set('removeParents', removeParents);
+
+        await fetch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+            createdSheet.spreadsheetId
+          )}?${moveQuery.toString()}`,
+          {
+            method: 'PATCH',
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+      }
+
+      const spreadsheetUrl =
+        createdSheet.spreadsheetUrl ||
+        `https://docs.google.com/spreadsheets/d/${createdSheet.spreadsheetId}/edit`;
+      const totalRowsWritten =
+        batchJson.totalUpdatedRows ??
+        overviewRows.length + depRows.length + langAndEnvRows.length + probeAndArtifactRows.length;
+
+      broadcastLog(
+        ws.id,
+        `Exported Google Sheets audit "${resolvedTitle}" (${totalRowsWritten} rows across 4 tabs).`
+      );
+
+      const result: GoogleSheetsExportResult = {
+        spreadsheetId: createdSheet.spreadsheetId,
+        title: createdSheet.properties?.title || resolvedTitle,
+        spreadsheetUrl,
+        tabNames,
+        totalRowsWritten,
+        folderId: cleanFolderId || undefined,
+        createdAt: new Date().toISOString(),
+      };
+
+      res.status(201).json({ result });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to export workspace audit to Google Sheets.';
+      broadcastLog(ws.id, `Google Sheets export error: ${message}`);
+      res.status(500).json({ error: message });
     }
   });
 

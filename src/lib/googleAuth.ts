@@ -1,50 +1,23 @@
-import { getApp, getApps, initializeApp } from "firebase/app";
+import type { User } from 'firebase/auth';
 import {
-  getAuth,
-  signInWithPopup,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  User,
-} from "firebase/auth";
-import firebaseConfig from "../../firebase-applet-config.json";
+  GOOGLE_WORKSPACE_SCOPES,
+  getCachedDriveAccessToken,
+  signInWithGoogleForDrive,
+  signOutFirebase,
+  subscribeDriveAuthState,
+} from './firebaseBridge';
 
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const auth = getAuth(app);
-
-export const SCOPES = [
-  "https://www.googleapis.com/auth/drive.file",
-];
-
-function createConfiguredProvider(forceAccountPicker = false) {
-  const provider = new GoogleAuthProvider();
-  for (const scope of SCOPES) {
-    provider.addScope(scope);
-  }
-  provider.setCustomParameters({
-    prompt: forceAccountPicker ? "select_account consent" : "consent",
-  });
-  return provider;
-}
-
-// Flag to indicate if we are in the middle of a sign-in flow.
-let isSigningIn = false;
-// Cache the access token strictly in memory.
-let cachedAccessToken: string | null = null;
+export const SCOPES = GOOGLE_WORKSPACE_SCOPES;
 
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
-      }
+  return subscribeDriveAuthState(({ user, hasDriveToken }) => {
+    const token = getCachedDriveAccessToken();
+    if (user && hasDriveToken && token) {
+      if (onAuthSuccess) onAuthSuccess(user, token);
     } else {
-      cachedAccessToken = null;
       if (onAuthFailure) onAuthFailure();
     }
   });
@@ -56,30 +29,13 @@ export const googleSignIn = async (
   user: User;
   accessToken: string;
 } | null> => {
-  try {
-    isSigningIn = true;
-    const provider = createConfiguredProvider(forceAccountPicker);
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error("Failed to get Google access token from Firebase Auth");
-    }
-
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error: any) {
-    console.error("Sign in error:", error);
-    throw error;
-  } finally {
-    isSigningIn = false;
-  }
+  return signInWithGoogleForDrive(forceAccountPicker);
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
+  return getCachedDriveAccessToken();
 };
 
 export const logout = async () => {
-  await auth.signOut();
-  cachedAccessToken = null;
+  await signOutFirebase();
 };

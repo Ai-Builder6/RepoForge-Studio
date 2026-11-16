@@ -31,6 +31,8 @@ interface OverviewPanelProps {
   onSwitchSubProject: (subPath: string) => void;
   onRefreshWorkspace: () => Promise<void>;
   onOpenDocsWorkflows: () => void;
+  onOpenWorkspaceHub?: () => void;
+  onImportSavedRepo?: (repoUrl: string, branch: string) => void;
 }
 
 export const OverviewPanel: React.FC<OverviewPanelProps> = ({
@@ -43,6 +45,8 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
   onSwitchSubProject,
   onRefreshWorkspace,
   onOpenDocsWorkflows,
+  onOpenWorkspaceHub,
+  onImportSavedRepo,
 }) => {
   const [depFilter, setDepFilter] = useState<'all' | 'runtime' | 'dev'>('all');
   const [depSearch, setDepSearch] = useState('');
@@ -208,10 +212,11 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
         </div>
       </div>
 
-      {/* Full Project Google Drive Folder Uploader */}
+      {/* Full Project Google Drive Folder Uploader & Google Sheets Audit */}
       <GoogleDriveExportCard
         workspace={workspace}
         onWorkspaceUpdated={onRefreshWorkspace}
+        onOpenWorkspaceHub={onOpenWorkspaceHub}
       />
 
       {/* Automated Post-Build Smoke Prober Report */}
@@ -295,6 +300,7 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
         workspace={workspace}
         onOpenFileInEditor={onOpenFileInEditor}
         onRefreshWorkspace={onRefreshWorkspace}
+        onImportSavedRepo={onImportSavedRepo}
       />
 
       {/* Two-Column Inspection Grid */}

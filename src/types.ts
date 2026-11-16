@@ -300,4 +300,39 @@ export interface GoogleDriveUploadResult {
   }>;
 }
 
+export interface GoogleDriveFileItem {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+  parents?: string[];
+}
+
+export interface GoogleSheetTabInfo {
+  sheetId: number;
+  title: string;
+  rowCount?: number;
+  columnCount?: number;
+}
+
+export interface GoogleSpreadsheetMetadata {
+  spreadsheetId: string;
+  title: string;
+  spreadsheetUrl: string;
+  sheets: GoogleSheetTabInfo[];
+}
+
+export interface GoogleSheetsExportResult {
+  spreadsheetId: string;
+  title: string;
+  spreadsheetUrl: string;
+  tabNames: string[];
+  totalRowsWritten: number;
+  folderId?: string;
+  createdAt: string;
+}
+
+
 
